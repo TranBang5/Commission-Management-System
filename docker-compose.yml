@@ -1,0 +1,188 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:6.0
+    container_name: ai_commission_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: ai_commission
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - ai_commission_network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: ai_commission_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ai_commission_network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai_commission_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://admin:password123@mongodb:27017/ai_commission?authSource=admin
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      API_PORT: 5000
+      CORS_ORIGIN: http://localhost:3000
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - ./logs:/app/logs
+    networks:
+      - ai_commission_network
+
+  # AI Engine
+  ai-engine:
+    build:
+      context: ./ai-engine
+      dockerfile: Dockerfile
+    container_name: ai_commission_ai_engine
+    restart: unless-stopped
+    environment:
+      AI_ENGINE_PORT: 8000
+      MONGODB_URI: mongodb://admin:password123@mongodb:27017/ai_commission?authSource=admin
+      REDIS_URL: redis://redis:6379
+      OPENAI_API_KEY: your-openai-api-key
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./ai-engine:/app
+      - ./models:/app/models
+      - ./logs:/app/logs
+    networks:
+      - ai_commission_network
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai_commission_frontend
+    restart: unless-stopped
+    environment:
+      REACT_APP_API_URL: http://localhost:5000/api
+      REACT_APP_AI_ENGINE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+      - ai-engine
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - ai_commission_network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: ai_commission_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - backend
+      - ai-engine
+    networks:
+      - ai_commission_network
+
+  # Celery Worker (for background tasks)
+  celery-worker:
+    build:
+      context: ./ai-engine
+      dockerfile: Dockerfile
+    container_name: ai_commission_celery_worker
+    restart: unless-stopped
+    command: celery -A tasks worker --loglevel=info
+    environment:
+      MONGODB_URI: mongodb://admin:password123@mongodb:27017/ai_commission?authSource=admin
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./ai-engine:/app
+      - ./logs:/app/logs
+    networks:
+      - ai_commission_network
+
+  # Celery Beat (for scheduled tasks)
+  celery-beat:
+    build:
+      context: ./ai-engine
+      dockerfile: Dockerfile
+    container_name: ai_commission_celery_beat
+    restart: unless-stopped
+    command: celery -A tasks beat --loglevel=info
+    environment:
+      MONGODB_URI: mongodb://admin:password123@mongodb:27017/ai_commission?authSource=admin
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./ai-engine:/app
+      - ./logs:/app/logs
+    networks:
+      - ai_commission_network
+
+  # Flower (Celery monitoring)
+  flower:
+    build:
+      context: ./ai-engine
+      dockerfile: Dockerfile
+    container_name: ai_commission_flower
+    restart: unless-stopped
+    command: celery -A tasks flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+      - celery-worker
+    networks:
+      - ai_commission_network
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  ai_commission_network:
+    driver: bridge 
