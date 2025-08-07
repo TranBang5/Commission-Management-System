@@ -25,6 +25,7 @@ class RewardCalculator:
         
         # Define feature weights for different roles
         self.role_weights = {
+            # Đội ngũ phát triển
             'developer': {
                 'kpi_score': 0.25,
                 'quality_score': 0.20,
@@ -33,45 +34,49 @@ class RewardCalculator:
                 'innovation_score': 0.10,
                 'project_progress': 0.10
             },
-            'designer': {
-                'kpi_score': 0.20,
-                'quality_score': 0.30,
-                'efficiency_score': 0.15,
+            # Đội ngũ marketing
+            'marketing_specialist': {
+                'kpi_score': 0.30,
+                'quality_score': 0.15,
+                'efficiency_score': 0.20,
                 'teamwork_score': 0.15,
-                'innovation_score': 0.20,
+                'innovation_score': 0.15,
+                'project_progress': 0.05
+            },
+            # Các mentor
+            'direct_mentor': {
+                'kpi_score': 0.20,
+                'quality_score': 0.15,
+                'efficiency_score': 0.15,
+                'teamwork_score': 0.30,
+                'innovation_score': 0.10,
                 'project_progress': 0.10
             },
-            'tester': {
-                'kpi_score': 0.30,
-                'quality_score': 0.25,
-                'efficiency_score': 0.20,
-                'teamwork_score': 0.15,
-                'innovation_score': 0.05,
-                'project_progress': 0.05
-            },
-            'analyst': {
-                'kpi_score': 0.25,
-                'quality_score': 0.20,
-                'efficiency_score': 0.20,
-                'teamwork_score': 0.20,
-                'innovation_score': 0.10,
-                'project_progress': 0.05
-            },
-            'lead': {
-                'kpi_score': 0.20,
+            'indirect_mentor': {
+                'kpi_score': 0.15,
                 'quality_score': 0.15,
                 'efficiency_score': 0.15,
                 'teamwork_score': 0.25,
                 'innovation_score': 0.15,
-                'project_progress': 0.10
+                'project_progress': 0.15
             },
-            'consultant': {
-                'kpi_score': 0.20,
+            # Đội ngũ thu hút nhân lực
+            'hr_recruiter': {
+                'kpi_score': 0.35,
                 'quality_score': 0.20,
-                'efficiency_score': 0.15,
+                'efficiency_score': 0.25,
+                'teamwork_score': 0.10,
+                'innovation_score': 0.05,
+                'project_progress': 0.05
+            },
+            # Đội ngũ liên hệ doanh nghiệp
+            'business_development': {
+                'kpi_score': 0.30,
+                'quality_score': 0.15,
+                'efficiency_score': 0.20,
                 'teamwork_score': 0.20,
-                'innovation_score': 0.15,
-                'project_progress': 0.10
+                'innovation_score': 0.10,
+                'project_progress': 0.05
             }
         }
         
@@ -86,12 +91,17 @@ class RewardCalculator:
         
         # Project profit sharing rates
         self.profit_sharing_rates = {
+            # Đội ngũ phát triển
             'developer': 0.02,  # 2% of project profit
-            'designer': 0.02,
-            'tester': 0.015,
-            'analyst': 0.015,
-            'lead': 0.03,
-            'consultant': 0.025
+            # Đội ngũ marketing
+            'marketing_specialist': 0.015,
+            # Các mentor
+            'direct_mentor': 0.025,
+            'indirect_mentor': 0.02,
+            # Đội ngũ thu hút nhân lực
+            'hr_recruiter': 0.015,
+            # Đội ngũ liên hệ doanh nghiệp
+            'business_development': 0.025
         }
 
     def _load_model(self):
@@ -177,33 +187,27 @@ class RewardCalculator:
             return 'poor'
 
     def _calculate_bonus(self, base_salary: float, performance_level: str, 
-                        project_profit: float, role: str) -> Dict[str, float]:
-        """Calculate various bonus components"""
-        multiplier = self.bonus_multipliers.get(performance_level, 1.0)
-        profit_sharing_rate = self.profit_sharing_rates.get(role, 0.02)
+                        project_revenue: float, role: str, performance_data: Dict[str, Any] = None) -> Dict[str, float]:
         
-        # Performance bonus
-        performance_bonus = base_salary * (multiplier - 1.0)
+        # Lấy tỷ lệ % của vai trò từ profit_sharing_rates
+        role_percentage = self.profit_sharing_rates.get(role, 0.02) * 100
         
-        # Project profit sharing
-        profit_bonus = project_profit * profit_sharing_rate
+        # Xác định tỷ lệ hiệu suất dựa trên xếp loại
+        performance_rate = self.bonus_multipliers.get(performance_level, 1.0)
         
-        # Quality bonus (if quality score is high)
-        quality_score = performance_data.get('quality_score', 0)
-        quality_bonus = base_salary * 0.1 if quality_score >= 90 else 0
+        # Áp dụng công thức tính thưởng duy nhất
+        total_bonus = project_revenue * (role_percentage / 100) * performance_rate
         
-        # Innovation bonus (if innovation score is high)
-        innovation_score = performance_data.get('innovation_score', 0)
-        innovation_bonus = base_salary * 0.05 if innovation_score >= 85 else 0
-        
+        # Trả về kết quả để sử dụng trong mô hình lai
         return {
-            'performance_bonus': performance_bonus,
-            'project_bonus': profit_bonus,
-            'quality_bonus': quality_bonus,
-            'innovation_bonus': innovation_bonus,
-            'total_bonus': performance_bonus + profit_bonus + quality_bonus + innovation_bonus
+            'personal_bonus': total_bonus, # Giờ đây personal_bonus chính là total_bonus
+            'role_percentage': role_percentage,
+            'performance_rate': performance_rate,
+            'quality_bonus': 0, # Không còn áp dụng
+            'innovation_bonus': 0, # Không còn áp dụng
+            'total_bonus': total_bonus
         }
-
+        
     def _calculate_ai_confidence(self, performance_data: Dict[str, Any], 
                                 historical_data: Optional[List[Dict]] = None) -> float:
         """Calculate AI confidence in the calculation"""
@@ -233,85 +237,69 @@ class RewardCalculator:
         confidence = (completeness * 0.4 + consistency * 0.4 + historical_consistency * 0.2)
         return min(100, max(0, confidence * 100))
 
+    # Thay thế hàm calculate cũ bằng hàm này
+
     async def calculate(self, period: Dict[str, int], project_id: str, 
-                       employee_id: str, performance_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Calculate commission using AI and rule-based approach"""
+                    employee_id: str, performance_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        *** NEW SEQUENTIAL LOGIC ***
+        1. AI (or Rules) determines the performance score.
+        2. A simple formula calculates the final bonus from that score.
+        """
         try:
             logger.info(f"Calculating commission for employee {employee_id}")
             
             role = performance_data.get('role', 'developer')
             base_salary = performance_data.get('base_salary', 0)
-            project_profit = performance_data.get('project_profit', 0)
+            project_revenue = performance_data.get('project_revenue', 0)
+
+            # --- PHẦN 1: XÁC ĐỊNH ĐIỂM HIỆU SUẤT TỔNG HỢP ---
+            final_performance_score = 0
+            source_of_score = 'rule_based'
+
+            if self.is_trained:
+                # Nếu AI đã được huấn luyện, hãy dùng AI để dự đoán điểm
+                try:
+                    features = self._extract_features(performance_data, role)
+                    scaled_features = self.scaler.transform(features)
+                    predicted_score = self.model.predict(scaled_features)[0]
+                    final_performance_score = max(0, min(100, predicted_score)) # Giới hạn điểm từ 0-100
+                    source_of_score = 'ai_predicted'
+                except Exception as e:
+                    logger.warning(f"AI prediction failed: {e}. Falling back to rule-based score.")
+                    # Nếu AI lỗi, quay về dùng luật
+                    final_performance_score = self._calculate_weighted_score(performance_data, role)
+            else:
+                # Nếu AI chưa được huấn luyện, dùng hệ thống luật để tính điểm
+                final_performance_score = self._calculate_weighted_score(performance_data, role)
+
+            # --- PHẦN 2: TÍNH TOÁN THƯỞNG TỪ ĐIỂM HIỆU SUẤT ---
             
-            # Calculate weighted performance score
-            weighted_score = self._calculate_weighted_score(performance_data, role)
+            # Chuyển đổi điểm số (0-100) sang cấp độ và tỷ lệ hiệu suất
+            performance_level = self._determine_performance_level(final_performance_score)
+            performance_rate = self.bonus_multipliers.get(performance_level, 1.0)
             
-            # Determine performance level
-            performance_level = self._determine_performance_level(weighted_score)
+            # Lấy tỷ lệ % của vai trò
+            role_percentage = self.profit_sharing_rates.get(role, 0.02) * 100
             
-            # Calculate bonuses
-            bonuses = self._calculate_bonus(base_salary, performance_level, project_profit, role)
-            
-            # Calculate AI confidence
-            ai_confidence = self._calculate_ai_confidence(performance_data)
-            
-            # Prepare AI factors for transparency
-            ai_factors = [
-                {
-                    'factor': 'weighted_performance_score',
-                    'weight': 0.4,
-                    'score': weighted_score,
-                    'impact': weighted_score * 0.4
-                },
-                {
-                    'factor': 'performance_level',
-                    'weight': 0.3,
-                    'score': 100 if performance_level == 'excellent' else 80 if performance_level == 'good' else 60,
-                    'impact': bonuses['performance_bonus']
-                },
-                {
-                    'factor': 'project_profit_sharing',
-                    'weight': 0.2,
-                    'score': min(100, (project_profit / base_salary) * 100) if base_salary > 0 else 0,
-                    'impact': bonuses['project_bonus']
-                },
-                {
-                    'factor': 'quality_innovation_bonus',
-                    'weight': 0.1,
-                    'score': 100 if bonuses['quality_bonus'] > 0 or bonuses['innovation_bonus'] > 0 else 0,
-                    'impact': bonuses['quality_bonus'] + bonuses['innovation_bonus']
-                }
-            ]
-            
-            # Calculate total amount
-            total_amount = base_salary + bonuses['total_bonus']
-            
+            # Áp dụng công thức tài chính cuối cùng
+            total_bonus = project_revenue * (role_percentage / 100) * performance_rate
+            total_amount = base_salary + total_bonus
+
+            # --- PHẦN 3: TRẢ VỀ KẾT QUẢ MINH BẠCH ---
             result = {
                 'period': period,
                 'project_id': project_id,
                 'employee_id': employee_id,
                 'role': role,
                 'base_salary': base_salary,
-                'performance_metrics': {
-                    'kpi_score': performance_data.get('kpi_score', 0),
-                    'quality_score': performance_data.get('quality_score', 0),
-                    'efficiency_score': performance_data.get('efficiency_score', 0),
-                    'teamwork_score': performance_data.get('teamwork_score', 0),
-                    'innovation_score': performance_data.get('innovation_score', 0),
-                    'project_progress': performance_data.get('project_progress', 0),
-                    'client_satisfaction': performance_data.get('client_satisfaction', 0),
-                    'deadline_adherence': performance_data.get('deadline_adherence', 0)
-                },
+                'performance_metrics': performance_data, # Trả về đầy đủ để tham khảo
                 'ai_calculations': {
-                    'overall_score': weighted_score,
+                    'source_of_score': source_of_score, # Cho biết điểm được tính từ đâu (AI hay Luật)
+                    'final_performance_score': final_performance_score,
                     'performance_level': performance_level,
-                    'performance_bonus': bonuses['performance_bonus'],
-                    'project_bonus': bonuses['project_bonus'],
-                    'quality_bonus': bonuses['quality_bonus'],
-                    'innovation_bonus': bonuses['innovation_bonus'],
-                    'total_bonus': bonuses['total_bonus'],
-                    'ai_confidence': ai_confidence,
-                    'ai_factors': ai_factors
+                    'performance_rate': performance_rate,
+                    'total_bonus': total_bonus,
                 },
                 'final_amount': total_amount,
                 'currency': 'VND',
