@@ -24,6 +24,13 @@ module.exports = function(sequelize, DataTypes) {
       type: DataTypes.ENUM('ADMIN','MANAGER','EMPLOYEE','BUSINESS_PARTNER'),
       allowNull: false
     }
+      ,
+      is_verified: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        comment: 'Đã xác thực email hay chưa'
+      }
   }, {
     sequelize,
     tableName: 'users',
